@@ -1,7 +1,6 @@
 ----------------------------------------------------------------------------------
 -- Company: USN - VHDL
 -- Engineer: Kirisan Manivannan
--- Design Name: 
 -- Module Name: CPU
 -- Description: Small CPU
 
