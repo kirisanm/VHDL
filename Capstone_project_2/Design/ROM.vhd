@@ -1,20 +1,6 @@
 ----------------------------------------------------------------------------------
--- Company: 
--- Engineer: JOHN ARILD, KIRISAN & RAHMAT
--- 
--- Create Date: 15.10.2019 22:38:16
--- Design Name: 
--- Module Name: rom - arch
--- Project Name: 
--- Target Devices: 
--- Tool Versions: 
--- Description: 
--- 
--- Dependencies: 
--- 
--- Revision:
--- Revision 0.01 - File Created
--- Additional Comments:
+-- Engineer: Kirisan Manivannan and Rahmat Mozafari
+
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
