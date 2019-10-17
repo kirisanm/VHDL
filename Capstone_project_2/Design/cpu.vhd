@@ -1,154 +1,272 @@
 ----------------------------------------------------------------------------------
--- Company: USN - VHDL
--- Engineer: Kirisan Manivannan
--- Module Name: CPU
--- Description: Small CPU
+-- Company: 
+-- Engineer: JOHN ARILD, KIRISAN & RAHMAT
+-- 
+-- Create Date: 15.10.2019 22:38:16
+-- Design Name: 
+-- Module Name: cpu - arch
+-- Project Name: 
+-- Target Devices: 
+-- Tool Versions: 
+-- Description: 
+-- 
+-- Dependencies: 
+-- 
+-- Revision:
+-- Revision 0.01 - File Created
+-- Additional Comments:
+library	ieee;
+use	ieee.std_logic_1164.all;
+use	ieee.numeric_std.all;
+-- Uncomment the following library declaration if using
+-- arithmetic functions with Signed or Unsigned values
+--use IEEE.NUMERIC_STD.ALL;
 
-----------------------------------------------------------------------------------
-
-library IEEE;
-use IEEE.STD_LOGIC_1164.ALL;
-use IEEE.numeric_std.ALL;
-
-entity cpu is
-
-    Port (
-               clk, reset : in std_logic;
-                       db : in std_logic_vector (7 downto 0);   --data bus : in
-                       ob : out std_logic_vector (7 downto 0);  --data out bus : out
-                       ab : out std_logic_vector (7 downto 0)   --address bus : out
---        rightMotorPhase : out std_logic_vector (3 downto 0);
---         leftMotorPhase : out std_logic_vector (3 downto 0)
+-- Uncomment the following library declaration if instantiating
+-- any Xilinx leaf cells in this code.
+--library UNISIM;
+--use UNISIM.VComponents.all;
+entity	cpu is
+	port(
+		clk, rst: in std_logic;
+		db: in std_logic_vector(7 downto 0);  -- data bus
+		ab,ob: out std_logic_vector(7 downto 0) -- address bus and output bus
         );
 end cpu;
 
 architecture arch of cpu is
-    constant ABW: integer := 8; --Address Bus Width
-    constant DBW: integer := 8; --Data Bus Width
-    constant LDRM: unsigned := "10100000";  --Load data to register from memory
-    constant JMPM: unsigned := "10110000";  --Jump to memory address
-    constant JRNZ: unsigned := "00110000";  --Jump to memory addr if data register not zero
+-- basic CPU instructions
+        -- state_previus = st_pre, state_next = st_nxt
+        -- program_counter_previus = pc_pre, pc_nxt
+        -- instruction_register_next = ir_nxt, ir_pre 
+        -- reload_previus = r_pre, reload_next = r_nxt
+        -- stepper motor data register = smdr
+        -- numbers steps count previous = nsc_pre and nxt = next
+        -- step duration count previous = sdc_pre and nxt = next
+    constant ABW,DBW: integer:=8;
+    constant LDRM: unsigned := "10100000"; -- A0H	
+	constant INCR: unsigned := "10110000"; -- B0H
+	constant DECR: unsigned := "11010000"; -- D0H
+	constant JMPM: unsigned := "11000000"; -- C0H
+	constant TOGR: unsigned := "11110000"; -- F0H  -- Toggle
+	constant MOVE_FW: unsigned := "01100100"; -- 64H
+	constant MOVE_BW: unsigned := "00110010"; -- 32H
+	constant MOVE_L: unsigned := "00010110"; -- 16H
+	constant MOVE_R: unsigned := "00001000"; -- 8H
+	constant HALT: unsigned := "11111111"; -- FFH
+	
+	-- state machine
+	type	state_type is (
+		  all_0, all_1,   -- common to all instructions
+		  move_2, move_3, move_4, move_5, move_6 --  move instruction
+		 );
+    
+    -- signals
+	signal	st_pre, st_nxt:	state_type; 
+	signal	pc_pre, pc_nxt: unsigned(ABW-1 downto 0);
+	signal	ir_pre, ir_nxt,r_pre, r_nxt: unsigned(DBW-1 downto 0);
+	signal  smdr_pre, smdr_nxt: std_logic_vector(7 downto 0);
+	signal sdc_pre, sdc_nxt: unsigned(23 downto 0);
+    signal nsc_pre, nsc_nxt: unsigned(7 downto 0);
 
-    constant INCR: unsigned := "11000000";  --Increment
-    constant DECR: unsigned := "11010000";  --Decrement
-    
-    constant MF: unsigned := "10000000";    --Move Forward
-    constant MB: unsigned := "01000000";    --Move Backward
-    constant ML: unsigned := "00100000";    --Move Left
-    constant MR: unsigned := "00010000";    --Move Right
-    
-    constant PUP: unsigned := "10010000";   --Pen UP
-    constant PDN: unsigned := "01100000";   --Pen DOWN
-    
-    constant HALT: unsigned := "11111111";  --HALT
-    
-    type state_type is(all_0, all_1);
-    signal st_pre, st_nxt: state_type;  --state present, state next
-    signal pc_pre, pc_nxt: unsigned (ABW-1 downto 0); --Program Counter Present, Program Counter Next
-    signal ir_pre, ir_nxt: unsigned (DBW-1 downto 0); --Instruction Register Present, Instruction Register Next
-    signal r_pre, r_nxt: unsigned (DBW-1 downto 0); --Register Present, Register Next
-    
-    begin 
-    --State Register
-    process(clk, reset)
-    begin
-        if(reset = '1') then
-            st_pre <= all_0;    --State Present is all_0
-            pc_pre <= (others => '0');   --reset address i all_0
-            ir_pre <= (others => '1');   --
-            r_pre <= (others => '0');    --Register is 0
-        elsif rising_edge(clk) then
-            st_pre <= st_nxt;   -- State Present is State next
-            pc_pre <= pc_nxt;   --Program Counter Present is Program Counter Next
-            ir_pre <= ir_nxt;   --Instruction Register Present is Instruction Register Next
-            r_pre <= r_nxt;    --Register Present is Register Next
-        end if;
-    end process;
-    
-    --Next State + (Moore) outputs
-    process(st_pre, db, pc_pre, r_pre)  --State present, data bus, Program Counter Present, Register Present
-    begin
-        st_nxt <= st_pre;   --Assignes next state to present state
-        pc_nxt <= pc_pre;
-        ir_nxt <= ir_pre;
-        r_nxt <= r_pre;
-        
-        case st_pre is
-            when all_0 =>
-                ir_nxt <= unsigned(db);
-                pc_nxt <= pc_pre + 1;
-                st_nxt <= all_1;
+
+begin
+
+process(clk,rst)						
+-- state register
+begin
+	if (rst='1') then
+		st_pre <= all_0;
+		pc_pre <= (others => '0');	-- reset address is all-0
+		ir_pre <= (others => '1'); 	-- default opcode is HALT (all '1')
+		r_pre  <= (others => '0');	-- initialize data register to 0
+		smdr_pre <= (others => '0');	-- stop stepper motors
+	     sdc_pre <= (OTHERS => '0'); -- set step duration counter
+         nsc_pre <= (OTHERS => '0'); -- set number of steps counter
+
+	elsif (clk'event and clk='1') then 
+		st_pre <= st_nxt;
+		pc_pre <= pc_nxt;
+		ir_pre <= ir_nxt;
+		r_pre <= r_nxt;
+		smdr_pre <= smdr_nxt;
+        sdc_pre <= sdc_nxt;
+        nsc_pre <= nsc_nxt;
+
+	end if;
+end process;
+
+process(st_pre,db,pc_pre,r_pre,sdc_pre, nsc_pre)
+begin
+    -- initial value
+	st_nxt <= st_pre;
+	pc_nxt <= pc_pre;	
+	ir_nxt <= ir_pre;
+	r_nxt <= r_pre; 
+
+    sdc_nxt <= sdc_pre;
+    nsc_nxt <= nsc_pre;
+	
+-- condition
+	if(st_pre =all_0) then
+			ir_nxt <= unsigned(db);  
+			pc_nxt <= pc_pre+1;
+			st_nxt <= all_1;
+	elsif(st_pre= all_1) then
+			if (ir_pre = LDRM) then	  -- Load, DR
+			    r_nxt <= unsigned(db);
+                pc_nxt <= pc_pre+1;
+				st_nxt <= all_0;
+			
+			elsif (ir_pre = INCR) then -- INC, DR
+                 r_nxt <= r_pre+1;            
+                 st_nxt <= all_0;
+            
+            elsif (ir_pre = DECR) then -- DEC, DR
+                 r_nxt <= r_pre-1;            
+                 st_nxt <= all_0;
+                 
+			elsif (ir_pre = JMPM) then -- JMP 
+			    pc_nxt <= unsigned(db);		    
+                st_nxt <= all_0;
                 
-            when all_1 =>
-                if(ir_pre = LDRM) then      --Load data to register from memory
-                    r_nxt <= unsigned(db);
-                    pc_nxt <= pc_pre + 1;
+            elsif (ir_pre = TOGR) then -- Toggle 
+			    if (r_pre = "00000000") then 
+			         pc_nxt <= pc_pre + 1;
+			         st_nxt <= all_1; 
+			    else                       
+                    pc_nxt <= unsigned(db);		    
                     st_nxt <= all_0;
-                
-                elsif(ir_pre = INCR) then   --Increment Data Register
-                    r_nxt <= r_pre + 1;
-                    st_nxt <= all_0;
-                
-                elsif(ir_pre = DECR) then   --Decrement Data Register
-                    r_nxt <= r_pre - 1;
-                    st_nxt <= all_0;
-                
-                elsif(ir_pre = JMPM) then   --Jump to memory address
-                    pc_nxt <= unsigned(db);
-                    st_nxt <= all_0;
-                    
-                elsif(ir_pre = JRNZ) then   --Jump to memory address if data register not zero
-                    if(r_pre = "00000000") then --If zero, Increment Program Counter
-                        pc_nxt <= pc_pre + 1;
-                        st_nxt <= all_1;
-                    else                    --if not zer, jump
-                        pc_nxt <= unsigned(db);
-                        st_nxt <= all_0;
-                
-                    end if;
---------------------------------------------------------------------------------
-                
-                elsif(ir_pre = MF) then     --Move Forward
-                    r_nxt <= unsigned(db);
-                    pc_nxt <= pc_pre + 1;
-                    st_nxt <= all_0;
-                    
-                elsif(ir_pre = MB) then     --Move Backward
-                    r_nxt <= unsigned(db);
-                    pc_nxt <= pc_pre + 1;
-                    st_nxt <= all_0;
-                    
-                 elsif(ir_pre = ML) then     --Move Left
-                    r_nxt <= unsigned(db);
-                    pc_nxt <= pc_pre + 1;
-                    st_nxt <= all_0;
-                
-                 elsif(ir_pre = MR) then     --Move Right
-                    r_nxt <= unsigned(db);
-                    pc_nxt <= pc_pre + 1;
-                    st_nxt <= all_0;
-                    
-                elsif(ir_pre = PUP) then    --Pen UP
-                    r_nxt <= unsigned(db);
-                    pc_nxt <= pc_pre + 1;
-                    st_nxt <= all_0;
-                    
-                elsif(ir_pre = PDN) then    --Pen DOWN
-                    r_nxt <= unsigned(db);
-                    pc_nxt <= pc_pre + 1;
-                    st_nxt <= all_0;
-                    
-               elsif(ir_pre = HALT) then
-                    st_nxt <= all_1;
-               else
-                    st_nxt <= all_0;
-               
                end if;
+               
+            elsif (ir_pre = MOVE_FW) then -- Move forward
+			    nsc_nxt  <= unsigned(db);
+			        sdc_nxt <= "000010011100010000000000"; --640000
+                pc_nxt <= pc_pre+1;
+				st_nxt <= move_2;
                 
-          end case;
-        end process;
-        
-        ab <= std_logic_vector(pc_pre);
-        ob <= std_logic_vector(r_pre);
+            elsif (ir_pre = MOVE_BW) then -- Move backward
+			    nsc_nxt  <= unsigned(db);
+			        sdc_nxt <= "000010011100010000000000"; --640000
+                pc_nxt <= pc_pre+1;
+				st_nxt <= move_2;
+                
+            elsif (ir_pre = MOVE_R) then -- Move right
+			    nsc_nxt  <= unsigned(db);
+			        sdc_nxt <= "000010011100010000000000"; --640000
+                pc_nxt <= pc_pre+1;
+				st_nxt <= move_2;
+                
+            elsif (ir_pre = MOVE_L) then -- Move left
+			    nsc_nxt  <= unsigned(db);
+			        sdc_nxt <= "000010011100010000000000"; --640000
+                pc_nxt <= pc_pre+1;
+				st_nxt <= move_2;
+
+			elsif (ir_pre = HALT) then -- HALT
+				st_nxt <= all_1;
+			
+			else 
+				st_nxt <= all_0;
+			end if;
+
+	elsif(st_pre=move_2) then
+		  if(nsc_pre  = 0) then
+		      st_nxt <= all_0;
+			else
+				st_nxt <= move_3;
+			end if;
+	elsif(st_pre = move_3) then
+		  if (nsc_pre =0) then
+				smdr_nxt <= "00000000"; 
+				st_nxt <= all_0;
+			else
+				if (ir_pre = MOVE_FW) then
+				    smdr_nxt <= "00110011";
+				elsif (ir_pre = MOVE_BW) then 
+				    smdr_nxt <= "00110011";
+				elsif (ir_pre = MOVE_L) then
+				    smdr_nxt <= "00111100";
+				elsif (ir_pre = MOVE_R) then 
+				    smdr_nxt <= "00111100";
+				end if;  
+				sdc_nxt  <= sdc_pre-1;
+				if (sdc_pre =0) then
+					nsc_nxt <= nsc_pre-1;
+			        sdc_nxt <= "000010011100010000000000"; --640000
+					st_nxt <= move_4;
+				end if;
+			end if;
+	elsif(st_pre = move_4) then
+		  if (nsc_pre=0) then
+				smdr_nxt <= "00000000";
+				st_nxt <= all_0;
+			else
+				if (ir_pre = MOVE_FW) then 
+				    smdr_nxt <= "10011001";
+				elsif (ir_pre = MOVE_BW) then
+				    smdr_nxt <= "01100110";
+				elsif (ir_pre = MOVE_L) then 
+				    smdr_nxt <= "10010110";
+				elsif (ir_pre = MOVE_R) then 
+				    smdr_nxt <= "01101001";
+				end if;
+				sdc_nxt <= sdc_pre-1;
+				if (sdc_pre=0) then
+					nsc_nxt <= nsc_pre-1;
+			        sdc_nxt <= "000010011100010000000000"; --640000
+					st_nxt <= move_5;
+				end if;
+			end if;
+	elsif(st_pre = move_5)then
+		  if (nsc_pre=0) then
+				smdr_nxt <= "00000000";
+				st_nxt <= all_0;
+			else
+				if (ir_pre = MOVE_FW) then 
+				    smdr_nxt <= "11001100";
+				elsif (ir_pre = MOVE_BW) then 
+				    smdr_nxt <= "11001100";
+				elsif (ir_pre = MOVE_L) then 
+				    smdr_nxt <= "11001100";
+				elsif (ir_pre = MOVE_R) then
+				    smdr_nxt <= "11001100";
+				end if;
+				
+				sdc_nxt <= sdc_pre-1;
+				if (sdc_pre=0) then
+					nsc_nxt <= nsc_pre-1;
+			        sdc_nxt <= "000100111000100000000000"; --640000
+					st_nxt <= move_6;
+				end if;
+			end if;
+	elsif(st_pre = move_6) then
+		  if (nsc_pre=0) then
+				smdr_nxt <= "00000000"; 
+				st_nxt <= all_0;
+			else
+				if (ir_pre = MOVE_FW) then 
+				    smdr_nxt <= "01100110"; 
+				elsif (ir_pre = MOVE_BW) then 
+				    smdr_nxt <= "10011001"; 
+				elsif (ir_pre = MOVE_L) then 
+				    smdr_nxt <= "01101001"; 
+				elsif (ir_pre = MOVE_R) then 
+				    smdr_nxt <= "10010110";
+				end if;
+				
+				sdc_nxt <= sdc_pre-1;
+				if (sdc_pre=0) then
+					nsc_nxt <= nsc_pre-1;
+			        sdc_nxt <= "000100111000100000000000"; --640000
+					st_nxt <= move_2;
+				end if;
+			end if;
+		
+	end if;		
+end process;
+
+ab <= std_logic_vector(pc_pre);
+ob <= std_logic_vector(smdr_pre);
 
 end arch;
